@@ -1,0 +1,5 @@
+@echo off
+set "JAVA_HOME=C:\Program Files\Microsoft\jdk-17.0.19.10-hotspot"
+set "PATH=C:\Program Files\Microsoft\jdk-17.0.19.10-hotspot\bin;C:\Users\Akshay\AppData\Local\Programs\apache-maven-3.9.9\bin;%PATH%"
+cd /d c:\Users\Akshay\Downloads\files\backend
+call "C:\Users\Akshay\AppData\Local\Programs\apache-maven-3.9.9\bin\mvn.cmd" -DskipTests spring-boot:run
