@@ -1,4 +1,4 @@
-# 🚀 Networking Roadmap App - Complete Learning Platform
+<!-- # 🚀 Networking Roadmap App - Complete Learning Platform
 
 A comprehensive, interactive React.js application for tracking your journey from L1 System Engineer to Senior Network Engineer with login system, task management, and admin dashboard.
 
@@ -414,4 +414,4 @@ Inspired by real career paths and industry demands
 **Last Updated:** June 2026
 **Version:** 1.0.0
 **Status:** Active & Maintained
-
+ -->
