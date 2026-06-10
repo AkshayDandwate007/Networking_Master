@@ -211,7 +211,7 @@ const App = () => {
       />
 
       <main className="h-screen min-w-0 flex-1 overflow-x-hidden overflow-y-auto transition-all duration-300">
-        <div className="sticky top-0 z-30 flex items-center justify-between bg-white p-5 shadow-sm border-b border-slate-200 md:hidden">
+        <div className="sticky top-0 z-30 flex items-center justify-between bg-black p-5 shadow-sm border-b border-slate-200 md:hidden">
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Networking Roadmap</p>
             <h1 className="font-bold text-lg">Dashboard</h1>
