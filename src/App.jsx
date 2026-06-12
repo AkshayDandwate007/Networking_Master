@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Eye, EyeOff, Plus, Edit2, Trash2, CheckCircle2, Circle, LogOut, Menu, X, ArrowRight, Award, BookOpen, Clock, Target, TrendingUp } from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_BASE || '';
+const LOCAL_LOGIN_ENABLED = process.env.REACT_APP_ENABLE_LOCAL_LOGIN === 'true';
 
 const DEFAULT_ROADMAP_PHASES = [
   { id: 0, title: 'PHASE 0: You Are Here', timeRange: 'Right now', salary: 'INR 2.5-4 LPA', topics: ['Desktop support', 'Basic networking', 'Troubleshooting'], color: '#2563EB', status: 'active', detail: 'Build troubleshooting confidence with desktop, OS, cabling, ticketing, and basic network checks.' },
@@ -13,10 +14,7 @@ const DEFAULT_ROADMAP_PHASES = [
   { id: 6, title: 'PHASE 6: Senior Network Architect', timeRange: 'Year 3+', salary: 'INR 35-80+ LPA', topics: ['Architecture', 'Leadership', 'Cost Planning', 'Security Design', 'Multi-cloud'], color: '#DC2626', status: 'planned', detail: 'Own architecture, standards, migration planning, and senior-level business impact.' }
 ];
 
-const DEFAULT_USERS = [
-  { id: 1, email: 'ak1001@gmail.com', loginId: 'AK1001', password: '100123', name: 'Master Admin', role: 'master-admin' },
-  { id: 2, email: 'aksai1001@gmail.com', loginId: 'AK1002', password: '100123', name: 'Admin User', role: 'admin' }
-];
+const DEFAULT_USERS = [];
 
 const normalizePhase = (phase, index = 0) => ({
   id: phase.id ?? Date.now() + index,
@@ -45,7 +43,7 @@ const apiRequest = async (path, options = {}) => {
     throw new Error('Static mode: backend API is disabled');
   }
 
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
@@ -90,9 +88,45 @@ const saveUsers = (users) => {
   localStorage.setItem('credentials', JSON.stringify(users));
 };
 
+const clearAuthSession = () => {
+  sessionStorage.removeItem('user');
+  sessionStorage.removeItem('token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('token');
+};
+
+const saveAuthSession = (userData) => {
+  const { token, ...sessionUser } = userData;
+  sessionStorage.setItem('user', JSON.stringify(sessionUser));
+  sessionStorage.setItem('token', token || `token_${Date.now()}`);
+  localStorage.removeItem('user');
+  localStorage.removeItem('token');
+  return sessionUser;
+};
+
+const getStoredSession = () => {
+  localStorage.removeItem('user');
+  localStorage.removeItem('token');
+
+  const savedUser = sessionStorage.getItem('user');
+  const savedToken = sessionStorage.getItem('token');
+
+  if (!savedUser || !savedToken) {
+    return null;
+  }
+
+  try {
+    return { user: JSON.parse(savedUser), token: savedToken };
+  } catch {
+    clearAuthSession();
+    return null;
+  }
+};
+
 const App = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState(null);
+  const [initialSession] = useState(() => getStoredSession());
+  const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(initialSession));
+  const [user, setUser] = useState(() => initialSession?.user || null);
   const [currentPage, setCurrentPage] = useState(() => localStorage.getItem('currentPage') || 'dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [roadmapPhases, setRoadmapPhases] = useState(() => {
@@ -114,15 +148,6 @@ const App = () => {
       return [];
     }
   });
-
-  useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    const savedToken = localStorage.getItem('token');
-    if (savedUser && savedToken) {
-      setUser(JSON.parse(savedUser));
-      setIsLoggedIn(true);
-    }
-  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -150,31 +175,28 @@ const App = () => {
 
   useEffect(() => {
     const loadServerData = async () => {
-      try {
-        const [serverPhases, serverUsers] = await Promise.all([
-          apiRequest('/phases'),
-          apiRequest('/users')
-        ]);
-        if (Array.isArray(serverPhases) && serverPhases.length) {
-          setRoadmapPhases(serverPhases.map(normalizePhase));
-        }
-        if (Array.isArray(serverUsers) && serverUsers.length) {
-          setUsers(serverUsers);
-          saveUsers(serverUsers);
-        }
-      } catch {
-        // Keep the app usable when the Java backend is not running.
+      const [phasesResult, usersResult] = await Promise.allSettled([
+        apiRequest('/phases'),
+        user?.role === 'master-admin' ? apiRequest('/users') : Promise.resolve([])
+      ]);
+
+      if (phasesResult.status === 'fulfilled' && Array.isArray(phasesResult.value) && phasesResult.value.length) {
+        setRoadmapPhases(phasesResult.value.map(normalizePhase));
+      }
+
+      if (usersResult.status === 'fulfilled' && Array.isArray(usersResult.value) && usersResult.value.length) {
+        setUsers(usersResult.value);
+        saveUsers(usersResult.value);
       }
     };
 
     if (isLoggedIn) {
       loadServerData();
     }
-  }, [isLoggedIn]);
+  }, [isLoggedIn, user?.role]);
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('token');
+    clearAuthSession();
     setIsLoggedIn(false);
     setUser(null);
     setCurrentPage('dashboard');
@@ -182,13 +204,10 @@ const App = () => {
 
   if (!isLoggedIn) {
     return <LoginPage onLogin={(userData) => {
-      setUser(userData);
+      const sessionUser = saveAuthSession(userData);
+      setUser(sessionUser);
       setIsLoggedIn(true);
-      localStorage.setItem('user', JSON.stringify(userData));
-      if (!localStorage.getItem('token')) {
-        localStorage.setItem('token', 'token_' + Date.now());
-      }
-      setCurrentPage(userData.role === 'admin' || userData.role === 'master-admin' ? 'admin' : 'dashboard');
+      setCurrentPage(sessionUser.role === 'admin' || sessionUser.role === 'master-admin' ? 'admin' : 'dashboard');
     }} />;
   }
 
@@ -245,6 +264,12 @@ const LoginPage = ({ onLogin }) => {
     setLoading(true);
     setError('');
 
+    if (!identifier.trim() || !password) {
+      setError('Please enter login ID/email and password.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const loginPayload = identifier.includes('@')
         ? { email: identifier.trim().toLowerCase(), password }
@@ -253,23 +278,26 @@ const LoginPage = ({ onLogin }) => {
         method: 'POST',
         body: JSON.stringify(loginPayload)
       });
-      localStorage.setItem('token', loggedInUser.token);
       onLogin(loggedInUser);
-    } catch {
-      const users = getSavedUsers();
-      const matchedUser = users.find(
-        (user) => (
-          user.email?.toLowerCase() === identifier.trim().toLowerCase()
-          || user.loginId?.toUpperCase() === identifier.trim().toUpperCase()
-        ) && user.password === password
-      );
+    } catch (error) {
+      if (LOCAL_LOGIN_ENABLED) {
+        const users = getSavedUsers();
+        const matchedUser = users.find(
+          (user) => (
+            user.email?.toLowerCase() === identifier.trim().toLowerCase()
+            || user.loginId?.toUpperCase() === identifier.trim().toUpperCase()
+          ) && user.password === password
+        );
 
-      if (!identifier.trim() || !password) {
-        setError('Please enter login ID/email and password.');
-      } else if (matchedUser) {
+        if (!matchedUser) {
+          setError('Invalid login ID/email or password. Please try again.');
+          return;
+        }
         onLogin(matchedUser);
+      } else if (!API_BASE) {
+        setError('Backend API is not configured. Set REACT_APP_API_BASE and use server credentials.');
       } else {
-        setError('Invalid login ID/email or password. Please try again.');
+        setError(error.message || 'Invalid login ID/email or password. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -718,6 +746,159 @@ const InfoRow = ({ icon, label, value }) => (
   </div>
 );
 const RoadmapPage = ({ phases: roadmapPhases, user, setCurrentPage }) => {
+  const phases = (roadmapPhases && roadmapPhases.length ? roadmapPhases : DEFAULT_ROADMAP_PHASES).map(normalizePhase);
+  const canEdit = user?.role === 'master-admin';
+  const activeIndex = Math.max(phases.findIndex((phase) => phase.status === 'active'), 0);
+  const activePhase = phases[activeIndex] || phases[0];
+  const finalPhase = phases[phases.length - 1];
+  const completedCount = phases.filter((phase) => phase.status === 'completed').length;
+  const totalTopics = phases.reduce((count, phase) => count + phase.topics.length, 0);
+  const progressPercent = phases.length ? Math.round(((activeIndex + 1) / phases.length) * 100) : 0;
+  const highlightedTopics = Array.from(new Set(phases.flatMap((phase) => phase.topics))).slice(0, 12);
+  const statusStyles = {
+    active: 'border-cyan-200 bg-cyan-50 text-cyan-700',
+    completed: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    planned: 'border-slate-200 bg-slate-50 text-slate-600'
+  };
+  const stats = [
+    { label: 'Total phases', value: phases.length, icon: <Target size={18} /> },
+    { label: 'Skill topics', value: totalTopics, icon: <BookOpen size={18} /> },
+    { label: 'Current phase', value: activePhase?.title?.split(':')[0] || 'Phase 0', icon: <Clock size={18} /> },
+    { label: 'Target role', value: finalPhase?.title?.replace(/^PHASE\s*\d+:\s*/i, '') || 'Architect', icon: <Award size={18} /> }
+  ];
+
+  return (
+    <div className="min-h-screen w-full overflow-x-hidden bg-slate-50 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto flex w-full max-w-screen-xl flex-col gap-6">
+        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="grid gap-5 bg-slate-950 p-5 text-white sm:p-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">Networking Roadmap</p>
+              <h1 className="mt-3 text-3xl font-bold leading-tight sm:text-4xl">Complete Roadmap</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300 sm:text-base">
+                L1 Support to Senior Network Architect with phase-wise skills, timelines, and salary targets.
+              </p>
+            </div>
+            {canEdit && (
+              <button
+                onClick={() => setCurrentPage('toc')}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100"
+              >
+                <Edit2 size={18} /> Edit Roadmap
+              </button>
+            )}
+          </div>
+
+          <div className="grid gap-3 border-t border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-4">
+            {stats.map((item) => (
+              <div key={item.label} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 text-slate-500">
+                  {item.icon}
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em]">{item.label}</span>
+                </div>
+                <p className="mt-2 truncate text-2xl font-bold text-slate-950">{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <section className="space-y-4" aria-label="Roadmap phases">
+            {phases.map((phase, index) => (
+              <div key={phase.id} className="relative pl-12 sm:pl-16">
+                {index < phases.length - 1 && (
+                  <div className="absolute left-5 top-14 h-[calc(100%+1rem)] w-px bg-slate-200 sm:left-7 sm:top-16" />
+                )}
+                <div
+                  className="absolute left-0 top-4 flex h-10 w-10 items-center justify-center rounded-lg border-2 border-white text-sm font-bold text-white shadow-md sm:h-14 sm:w-14 sm:text-base"
+                  style={{ backgroundColor: phase.color }}
+                >
+                  {index}
+                </div>
+
+                <article className={`rounded-lg border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-5 ${phase.status === 'active' ? 'border-cyan-300 shadow-cyan-100' : 'border-slate-200'}`}>
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="min-w-0 text-lg font-bold text-slate-950 sm:text-xl">{phase.title}</h2>
+                        <span className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize ${statusStyles[phase.status] || statusStyles.planned}`}>
+                          {phase.status}
+                        </span>
+                      </div>
+                      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{phase.detail}</p>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                          <Clock size={16} className="shrink-0 text-slate-500" />
+                          <span className="min-w-0 truncate">{phase.timeRange}</span>
+                        </div>
+                        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
+                          <TrendingUp size={16} className="shrink-0 text-slate-500" />
+                          <span className="min-w-0 truncate">{phase.salary}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {phase.topics.map((topic, topicIndex) => (
+                          <span key={`${topic}-${topicIndex}`} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                            {topic}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-2 rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white">
+                      {phase.status === 'completed' ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                      Phase {index}
+                    </div>
+                  </div>
+                </article>
+              </div>
+            ))}
+          </section>
+
+          <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+            <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Current Focus</p>
+              <h2 className="mt-2 text-xl font-bold text-slate-950">{activePhase?.title}</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{activePhase?.detail}</p>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-cyan-500" style={{ width: `${progressPercent}%` }} />
+              </div>
+              <div className="mt-2 flex justify-between text-xs font-semibold text-slate-500">
+                <span>{progressPercent}% path marker</span>
+                <span>{completedCount} completed</span>
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Skill Stack</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {highlightedTopics.map((topic) => (
+                  <span key={topic} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {topic}
+                  </span>
+                ))}
+              </div>
+            </section>
+
+            {canEdit && (
+              <button
+                onClick={() => setCurrentPage('toc')}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-100"
+              >
+                Manage roadmap <ArrowRight size={16} />
+              </button>
+            )}
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// eslint-disable-next-line no-unused-vars
+const LegacyRoadmapPage = ({ phases: roadmapPhases, user, setCurrentPage }) => {
   const unusedDefaultPhases = [
     {
       id: 0,
@@ -1422,7 +1603,12 @@ const CredentialManagement = ({ credentials, setCredentials }) => {
           role: formData.role
         })
       });
-    } catch {
+    } catch (error) {
+      if (!LOCAL_LOGIN_ENABLED) {
+        setMessage(error.message || 'Backend API is required to create credentials.');
+        return;
+      }
+
       createdUser = {
         id: Date.now(),
         email: formData.email.trim().toLowerCase(),
@@ -1443,8 +1629,11 @@ const CredentialManagement = ({ credentials, setCredentials }) => {
   const deleteCredential = async (id) => {
     try {
       await apiRequest(`/users/${id}`, { method: 'DELETE' });
-    } catch {
-      // Local fallback below.
+    } catch (error) {
+      if (!LOCAL_LOGIN_ENABLED) {
+        setMessage(error.message || 'Backend API is required to remove credentials.');
+        return;
+      }
     }
     const updated = credentials.filter((item) => item.id !== id);
     setCredentials(updated);

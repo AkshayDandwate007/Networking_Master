@@ -38,7 +38,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     var auth = new UsernamePasswordAuthenticationToken(
                             user.getEmail(),
                             null,
-                            Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))
+                            Collections.singletonList(new SimpleGrantedAuthority(toAuthority(user.getRole())))
                     );
                     SecurityContextHolder.getContext().setAuthentication(auth);
                 });
@@ -51,5 +51,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         return request.getServletPath().equals("/api/auth/login") || request.getMethod().equalsIgnoreCase("OPTIONS");
+    }
+
+    private String toAuthority(String role) {
+        if (role == null || role.isBlank()) {
+            return "ROLE_USER";
+        }
+        return "ROLE_" + role.trim().toUpperCase().replace("-", "_");
     }
 }

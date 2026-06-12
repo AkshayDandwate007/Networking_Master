@@ -16,7 +16,18 @@ This is a Java Spring Boot backend for the Networking Roadmap app.
 CREATE DATABASE networkingroadmap_db;
 ```
 
-2. Update `backend/src/main/resources/application.properties` with your MySQL username/password.
+2. Set the required environment variables. Do not commit real secrets.
+
+PowerShell example:
+
+```powershell
+$env:MYSQL_DB="networkingroadmap_db"
+$env:MYSQL_USER="your_mysql_user"
+$env:MYSQL_PASSWORD="your_mysql_password"
+$env:JWT_SECRET="replace-with-at-least-32-random-characters"
+```
+
+You can use `backend/.env.example` as a checklist, but Spring Boot does not automatically load that file.
 
 3. Run the backend from the `backend` directory:
 
@@ -42,6 +53,7 @@ mvn spring-boot:run
 
 ## Notes
 
-- `data.sql` seeds demo admin users and roadmap phases on startup.
+- `data.sql` does not seed login users. Create the first master admin directly in your own database or through a private admin setup flow.
 - The backend uses `spring.jpa.hibernate.ddl-auto=update` to create tables automatically.
-- For production, replace plain-text passwords with a secure hashing solution.
+- Passwords are stored with BCrypt through Spring Security.
+- API writes are role protected: user/credential and roadmap writes require `master-admin`; task updates require `admin` or `master-admin`.

@@ -32,10 +32,10 @@ public class ApiController {
     private final JwtUtil jwtUtil;
     private final JavaMailSender mailSender;
 
-    @Value("${app.login-alert.to:dandwateakshay45@gmail.com}")
+    @Value("${app.login-alert.to:}")
     private String loginAlertTo;
 
-    @Value("${app.login-alert.enabled:true}")
+    @Value("${app.login-alert.enabled:false}")
     private boolean loginAlertEnabled;
 
     public ApiController(TaskRepository taskRepository,

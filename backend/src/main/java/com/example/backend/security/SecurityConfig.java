@@ -3,6 +3,7 @@ package com.example.backend.security;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -23,6 +24,15 @@ public class SecurityConfig {
                 .and()
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/auth/login", "/api-docs/**", "/swagger-ui.html", "/swagger-ui/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/phases").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/phases").hasRole("MASTER_ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/phases/**").hasRole("MASTER_ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/phases/**").hasRole("MASTER_ADMIN")
+                        .requestMatchers("/api/users", "/api/users/**").hasRole("MASTER_ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/tasks").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/tasks").hasRole("MASTER_ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/tasks/**").hasAnyRole("ADMIN", "MASTER_ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/tasks/**").hasRole("MASTER_ADMIN")
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception
